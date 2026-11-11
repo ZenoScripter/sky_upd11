@@ -80,7 +80,7 @@ class _AuthPageState extends State<AuthPage> {
     if (hasProfile) {
       context.pop();
     } else {
-      await context.pushReplacement('/settings/complete-profile');
+      context.pushReplacement('/settings/complete-profile');
     }
   }
 
