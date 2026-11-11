@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// Skyfy - Firestore security rules.
+// Paste in Firebase console > Firestore Database > Rules > Publish.
+// Every rule is explained in FIRESTORE-SECURITY.md.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validUsername(name) {
+      return name is string && name.matches('^[a-z0-9_]{3,20}$');
+    }
+
+    function validProfile(d) {
+      return d.keys().hasOnly(['username', 'displayName', 'bio', 'photo', 'createdAt', 'updatedAt'])
+        && validUsername(d.username)
+        && d.displayName is string
+        && d.displayName.size() >= 1
+        && d.displayName.size() <= 30
+        && d.bio is string
+        && d.bio.size() <= 160
+        && (!('photo' in d) || (d.photo is string && d.photo.size() <= 700000));
+    }
+
+    function validPrivate(d) {
+      return d.keys().hasOnly(['createdAt', 'updatedAt', 'privacy'])
+        && d.privacy.keys().hasOnly(['showActivity', 'showOnline'])
+        && d.privacy.showActivity is bool
+        && d.privacy.showOnline is bool;
+    }
+
+    // Public profile: any signed-in user can read it, only its owner writes it.
+    // It never contains the e-mail address.
+    match /profiles/{uid} {
+      allow read: if signedIn();
+
+      // Created together with the username reservation (same transaction).
+      allow create: if isOwner(uid)
+        && validProfile(request.resource.data)
+        && existsAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username))
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid;
+
+      // The username can never be changed.
+      allow update: if isOwner(uid)
+        && validProfile(request.resource.data)
+        && request.resource.data.username == resource.data.username;
+
+      allow delete: if false;
+    }
+
+    // Private data: only the owner can read or write it.
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && validPrivate(request.resource.data);
+      allow update: if isOwner(uid) && validPrivate(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Username reservation: one document per username, created exactly once,
+    // and only together with the matching profile.
+    match /usernames/{name} {
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && validUsername(name)
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.username == name;
+
+      allow update, delete: if false;
+    }
+  }
+}

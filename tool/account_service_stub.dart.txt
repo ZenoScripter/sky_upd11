@@ -1,0 +1,134 @@
+/*
+ *     Copyright (C) 2026 Valeri Gokadze
+ *
+ *     Musify is free software: you can redistribute it and/or modify
+ *     it under the terms of the GNU General Public License as published by
+ *     the Free Software Foundation, either version 3 of the License, or
+ *     (at your option) any later version.
+ *
+ *     Musify is distributed in the hope that it will be useful,
+ *     but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *     GNU General Public License for more details.
+ *
+ *     You should have received a copy of the GNU General Public License
+ *     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *
+ *     For more information about Musify, including how to contribute,
+ *     please visit: https://github.com/gokadzev/Musify
+ */
+
+import 'dart:convert';
+import 'dart:ui' as ui;
+
+import 'package:material_ui/material_ui.dart';
+import 'package:musify/utilities/skyfy_text.dart';
+
+// Desktop (Windows/Linux) version of account_service.dart: same public API,
+// no Firebase. The desktop CI workflow copies this file over
+// lib/services/account_service.dart (see .github/workflows/desktop.yml).
+
+class AccountException implements Exception {
+  AccountException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+class AccountProfile {
+  const AccountProfile({
+    required this.username,
+    required this.displayName,
+    required this.bio,
+    this.photo,
+  });
+
+  final String username;
+  final String displayName;
+  final String bio;
+  final String? photo;
+}
+
+class AccountService {
+  AccountService._();
+
+  static final AccountService instance = AccountService._();
+
+  static final RegExp usernameRegExp = RegExp(r'^[a-z0-9_]{3,20}$');
+  static const int maxPhotoLength = 700000;
+
+  final ValueNotifier<bool> available = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> signedIn = ValueNotifier<bool>(false);
+  final ValueNotifier<AccountProfile?> profile =
+      ValueNotifier<AccountProfile?>(null);
+  final ValueNotifier<bool> profileReady = ValueNotifier<bool>(false);
+
+  String? get uid => null;
+
+  String get authDisplayName => '';
+
+  Future<void> init() async {}
+
+  Future<void> register({
+    required String email,
+    required String password,
+    required String username,
+    required String displayName,
+  }) async => throw _unsupported();
+
+  Future<void> signInWithEmail(String email, String password) async =>
+      throw _unsupported();
+
+  Future<void> signInWithGoogle() async => throw _unsupported();
+
+  Future<void> sendPasswordReset(String email) async => throw _unsupported();
+
+  Future<void> signOut() async {}
+
+  Future<bool> hasProfile(String uid) async => false;
+
+  Future<void> completeProfile({
+    required String username,
+    required String displayName,
+  }) async => throw _unsupported();
+
+  Future<void> updateProfile({
+    required String displayName,
+    required String bio,
+    String? photo,
+    bool removePhoto = false,
+  }) async => throw _unsupported();
+
+  Future<void> dispose() async {}
+
+  AccountException _unsupported() => AccountException(
+    tt(
+      'Akun hanya tersedia di Android',
+      'Accounts are only available on Android',
+    ),
+  );
+}
+
+String describeAccountError(Object error) {
+  if (error is AccountException) return error.message;
+  return tt('Terjadi kesalahan, coba lagi', 'Something went wrong, try again');
+}
+
+Future<String?> shrinkAvatarDataUrl(String dataUrl) async {
+  try {
+    final data = dataUrl.contains(',') ? dataUrl.split(',').last : dataUrl;
+    final codec = await ui.instantiateImageCodec(
+      base64Decode(data),
+      targetWidth: 256,
+    );
+    final frame = await codec.getNextFrame();
+    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    if (png == null) return null;
+    return 'data:image/png;base64,${base64Encode(png.buffer.asUint8List())}';
+  } catch (_) {
+    return null;
+  }
+}
